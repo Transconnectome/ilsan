@@ -1,0 +1,45 @@
+wandb:
+    API_KEY: "d3aa43e2c12e48489b08c4a1ee19de1ff8f88e0f"
+
+dataset:
+    img_dir: /scratch/connectome/dhkdgmlghks/ilsan/sample_img
+    meta_dir: /scratch/connectome/dhkdgmlghks/ilsan/meta_data.xlsx
+    add_context: True
+    train_size: 0.8
+    val_size: 0.1
+    test_size: 0.1
+model: 
+    image_encoder:
+        vit_model: "eva_clip_g"
+        img_size: 128
+        patch_size: 16
+        drop_path_rate: 0
+        use_grad_checkpoint: False
+        freeze_vit: True
+        lora_vit: False
+        num_query_token: 32
+    language_encoder: 
+        lm_model: "Qwen/Qwen-7B-Chat"
+        prompt: ""
+        max_txt_len: 100
+        apply_lemmatizer: False
+        embed_dim: 256
+
+training_parameters:
+    seed: 1234
+    batch_size: 2
+    accumulation_steps: 16
+    optimizer: "AdamW"
+    learning_rate: 0.0001
+    weight_decay: 0.01
+    lr_scheduler: 
+
+pl_trainer: 
+    max_epochs: 100
+    devices: 1 
+    accelerator: 'gpu'
+    precision: 'bf16'
+    num_nodes: 1
+    strategy: 'DeepSpeed_Zero3_offload'
+    logger: "wandb" 
+    log_every_n_steps: 1
