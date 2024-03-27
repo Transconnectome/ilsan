@@ -7,6 +7,14 @@ Some comlumn names of meta data should be changed as follows.
 - 검사연령-> age 
 - 판독소견 -> reports
 
+## Setting img data 
+image files should be structured as follows. 
+```
+/img_dir
+    |-----{BET_output_path}.nii.gz
+```
+
+
 ## Setting data directories 
 Absolute directories of image file and meta data should be respectively added to "img_dir" and "meta_dir"  in ```./project/config/Brain_blip_v1_train_single_gpu.yaml```.
 
