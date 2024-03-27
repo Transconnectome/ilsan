@@ -6,6 +6,7 @@ Some comlumn names of meta data should be changed as follows.
 - 성별 -> sex 
 - 검사연령-> age 
 - 판독소견 -> reports
+- 판독결과-> label
 
 ## Setting img data 
 image files should be structured as follows. 
