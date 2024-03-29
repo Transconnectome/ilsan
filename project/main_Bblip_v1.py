@@ -54,6 +54,10 @@ def __main__():
     lm_tokenizer = AutoTokenizer.from_pretrained(config.model.language_encoder.lm_model, device_map='sequential',trust_remote_code=True, pad_token='<|extra_0|>')
     lm_tokenizer.pad_token_id = lm_tokenizer.eod_id
     lm_model = AutoModelForCausalLM.from_pretrained(config.model.language_encoder.lm_model, device_map="sequential", fp16=True, trust_remote_code=True).eval().to('cpu')
+    # disabling flash attention
+    if config.model.language_encoder.use_flash_attn is False: 
+        for i in range(len(lm_model.transformer.h)):
+            lm_model.transformer.h[i].attn.use_flash_attn=False
     #lm_model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen-7B-Chat', device_map="sequential", fp16=True, trust_remote_code=True).eval().to('cpu')
     #lm_tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m", device_map='sequential')
     #lm_model = OPTModel.from_pretrained("facebook/opt-350m", torch_dtype=torch.float16, device_map='sequential').eval().to('cpu')
