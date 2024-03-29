@@ -24,6 +24,7 @@ model:
         max_txt_len: 100
         apply_lemmatizer: False
         embed_dim: 256
+        use_flash_attn: False
 
 training_parameters:
     seed: 1234
