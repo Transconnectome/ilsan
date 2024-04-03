@@ -137,7 +137,7 @@ class  Text_Image_DataModule(pl.LightningDataModule):
             NotImplementedError("This code need only meta data file of '.csv' or '.xlsx' format.")
         
         ## randomly assign subjects into train/val/test split
-        #total_subj = len(meta_data)
+        total_subj = len(meta_data)
         shuffle_idx = np.arange(total_subj)
         np.random.shuffle(shuffle_idx)
 
