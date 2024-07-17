@@ -591,7 +591,7 @@ class Brain_BLIP_pl(pl.LightningModule):
         self.log_dict({
             "test_loss_itc": loss_dict['loss_itc'],
             "test_loss_inst": loss_dict['loss_inst'],
-            "vest_loss_total": loss_dict['loss_total']
+            "test_loss_total": loss_dict['loss_total']
         })
 
     """
