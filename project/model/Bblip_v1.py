@@ -533,7 +533,7 @@ class Brain_BLIP_pl(pl.LightningModule):
         """ 
         super().__init__()
         self.save_hyperparameters(config)
-        self.automatic_optimization = False
+        #self.automatic_optimization = False
 
         # setting model
         self.model = Brain_BLIP(vit_model=self.hparams.model.image_encoder.vit_model,
