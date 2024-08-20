@@ -24,7 +24,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.trainer_pt_utils import LabelSmoother
 
 import loralib as lora
-#from deepspeed.ops.adam import FusedAdam, DeepSpeedCPUAdam
+from deepspeed.ops.adam import FusedAdam, DeepSpeedCPUAdam
 
 from sklearn.metrics import accuracy_score, roc_auc_score, r2_score
 
@@ -280,8 +280,8 @@ class Brain_BLIP_pl(pl.LightningModule):
         if self.hparams.training_parameters.optimizer == "AdamW": 
             if self.hparams.pl_trainer.strategy == 'DeepSpeed_Zero3_offload':
                 #optim = DeepSpeedCPUAdam(filter(lambda p: p.requires_grad, self.parameters()), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
-                #optim = DeepSpeedCPUAdam(self.parameters(), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
-                pass
+                optim = DeepSpeedCPUAdam(self.parameters(), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
+                #pass
             else:
                 optim = torch.optim.AdamW(filter(lambda p: p.requires_grad, self.parameters()), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
                 #optim = torch.optim.AdamW(self.parameters(), lr= self.learning_rate, weight_decay=self.hparams.training_parameters.weight_decay)
