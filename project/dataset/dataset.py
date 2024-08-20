@@ -43,7 +43,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
         self.sex_text = sex_text
         self.age_text = age_text
         self.priming = 'You are a neurologist and now you are analyzing T2-weighted and FLAIR images from subjects who may be diagnosed with stroke. '
-        self.quest = "Assess the subject's brain health status by evaluating the presence of any brain lesions, and if present, provide information on their injury time and characteristics"
+        self.quest = "Assess the subject's brain health status by evaluating the presence of any brain lesions, and if present, provide information on their injury time and characteristics. Answer: "
         self.qna_template = self.quest + "Answer: "
         self.ans_template = "This subject will be diagnosed with"
         self.image_loader = LoadImage(reader=None, image_only=True, dtype=np.float32)    # use default reader of LoadImage
