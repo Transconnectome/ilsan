@@ -22,6 +22,17 @@ class Text_Image_Dataset(Dataset, Randomizable):
                  sex_text=None, 
                  age_text=None,
                  ):
+        """
+        Training Stage 1 
+        - predict whether the subject has brain lesion or not 
+        - if the subject has brain lesion, also predict injury time 
+        self.quest = "Question 1: Provide 'yes' or 'no' answer as to whether this subject has a brain lesion. If 'yes' to Question 1, provide answer to Question 2. If 'no' to Question 1, no further response is needed. Question 2:If this subject has a brain lesion, choose the most appropriate option among 'acute', 'chronic', 'recent', and 'old'."
+        Training Stage 2
+        - predict whether the subject has brain lesion or not 
+        - if the subject has brain lesion, also predict injury time 
+        - if the subject has brain lesion, also predict injury time 
+        self.quest = "Question 1: Provide 'yes' or 'no' answer as to whether this subject has a brain lesion. If 'yes' to Question 1, provide answer to Question 2. If 'no' to Question 1, no further response is needed. Question 2:If this subject has a brain lesion, choose the most appropriate option among 'acute', 'chronic', 'recent', and 'old'. Also, if this subject has a brain lesion, choose the most appropriate option among 'infarction', 'hemorrage', and 'ICH'."
+        """
         self.image_files = image_files
         self.image_transform = image_transform
         self.reports_text = reports_text
@@ -32,7 +43,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
         self.sex_text = sex_text
         self.age_text = age_text
         self.priming = 'You are a neurologist and now you are analyzing T2-weighted and FLAIR images from subjects who may be diagnosed with stroke. '
-        self.quest = 'Question: In the following options, what will this subject be diagnosed with? Options: (a)left middle cerebral artery (b)right middle cerebral artery (c)left anterior cerebral artery (d)right anterior cerebral artery (e)left posterior cerebral artery (f)right posterior cerebral artery (g)no stroke. '
+        self.quest = "Assess the subject's brain health status by evaluating the presence of any brain lesions, and if present, provide information on their injury time and characteristics"
         self.qna_template = self.quest + "Answer: "
         self.ans_template = "This subject will be diagnosed with"
         self.image_loader = LoadImage(reader=None, image_only=True, dtype=np.float32)    # use default reader of LoadImage
@@ -53,7 +64,7 @@ class Text_Image_Dataset(Dataset, Randomizable):
     
     def __transform_text__(self, reports, label, add_context=False, sex=None, age=None):
         text = reports.replace("_x000D_\n", "")  # remove unnecessary spaces from text
-        answer = f'{label}.'
+        answer = self.__transform_text_label_(label)
         #answer = f'{self.ans_template} {label}.'
         inst = self.priming 
                 
@@ -69,6 +80,28 @@ class Text_Image_Dataset(Dataset, Randomizable):
         text = text + answer 
         
         return text, inst, answer, label
+    
+
+    def __transform_text_label_(self, label): 
+        _, lesion, injury_time, character, _ = label.split("\n")
+        """
+        if lesion.split(" ")[-1] == "Y": 
+            answer1 = "Answer 1: yes"
+            answer2 = f"Answer 2: {injury_time.split(' ')[-1]} and {character.split(' ')[-1]}." 
+        elif lesion.split(" ")[-1] == "N":
+            answer1 = "Answer 1: no"
+            answer2 = "" 
+        answer = f"{answer1}. {answer2}"
+        """
+        if lesion.split(" ")[-1] == "Y": 
+            if character.split(' ')[-1] == "nan":
+                answer = f"This subject has an {injury_time.split(' ')[-1]} brain lesion."
+            else: 
+                answer = f"This subject has an {injury_time.split(' ')[-1]} brain lesion characterized by {character.split(' ')[-1]}."
+        elif lesion.split(" ")[-1] == "N":
+            answer = "This subject does not have any brain lesion."
+        return answer 
+
 
 
     def __len__(self) -> int: 
