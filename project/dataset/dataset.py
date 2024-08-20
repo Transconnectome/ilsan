@@ -31,16 +31,8 @@ class Text_Image_Dataset(Dataset, Randomizable):
             assert sex_text is not None and age_text is not None
         self.sex_text = sex_text
         self.age_text = age_text
-        self.priming = 'You are a neurologist and now you are analyzing T2-weighted and FLAIR images from subjects who may be diagnosed with stroke.'
-        self.quest = 'Question: In the following options, what will this subject be diagnosed with? \
-            Options: \
-            (a) left middle cerebral artery \
-            (b) right middle cerebral artery \
-            (c) left anterior cerebral artery \
-            (d) right anterior cerebral artery \
-            (e) left posterior cerebral artery \
-            (f) right posterior cerebral artery \
-            (g) normal (no stroke). '
+        self.priming = 'You are a neurologist and now you are analyzing T2-weighted and FLAIR images from subjects who may be diagnosed with stroke. '
+        self.quest = 'Question: In the following options, what will this subject be diagnosed with? Options: (a)left middle cerebral artery (b)right middle cerebral artery (c)left anterior cerebral artery (d)right anterior cerebral artery (e)left posterior cerebral artery (f)right posterior cerebral artery (g)no stroke. '
         self.qna_template = self.quest + "Answer: "
         self.ans_template = "This subject will be diagnosed with"
         self.image_loader = LoadImage(reader=None, image_only=True, dtype=np.float32)    # use default reader of LoadImage
@@ -61,18 +53,22 @@ class Text_Image_Dataset(Dataset, Randomizable):
     
     def __transform_text__(self, reports, label, add_context=False, sex=None, age=None):
         text = reports.replace("_x000D_\n", "")  # remove unnecessary spaces from text
-        inst = text + self.qna_template
-        answer = f'{self.ans_template} {label}.'
-        quest = self.priming + self.qna_template
+        answer = f'{label}.'
+        #answer = f'{self.ans_template} {label}.'
+        inst = self.priming 
+                
         if add_context:
             if sex == 'F': 
                 context = f'This subject is {age}-years old female. '
             elif sex == 'M': 
                 context = f'This subject is {age}-years old male. '
             text = context + text 
-            inst = context + inst
-        inst = self.priming + inst 
-        return text, inst, quest, answer, label
+            inst = inst + context 
+        
+        inst = inst + text + self.quest
+        text = text + answer 
+        
+        return text, inst, answer, label
 
 
     def __len__(self) -> int: 
@@ -84,43 +80,44 @@ class Text_Image_Dataset(Dataset, Randomizable):
         """
         image = self.__transform_image__(image_file=self.image_files[index])
         if self.add_context:
-            text, inst, quest, answer, label = self.__transform_text__(reports=self.reports_text[index], label=self.label_text[index], add_context=True, sex=self.sex_text[index], age=self.age_text[index])
+            text, inst, answer, label = self.__transform_text__(reports=self.reports_text[index], label=self.label_text[index], add_context=True, sex=self.sex_text[index], age=self.age_text[index])
         else: 
-            text, inst, quest, answer, label = self.__transform_text__(reports=self.reports_text[index], label=self.label_text[index], add_context=False)
+            text, inst, answer, label = self.__transform_text__(reports=self.reports_text[index], label=self.label_text[index], add_context=False)
         return {
                 'image': image,
                 'text': text,
                 'inst': inst,
-                'quest': quest,
                 'answer': answer,
                 'label': label
                 }
 
 
 class  Text_Image_DataModule(pl.LightningDataModule):
-    def __init__(self, config:dict = None, img_dir:str = None, meta_dir:str = None):
-        self.save_hyperparameters(config)
-        self.img_dir = img_dir
-        self.meta_dir = meta_dir
-        self.setup()
+    def __init__(self, config_dataset:dict = None, batch_size=1):
+        self.save_hyperparameters(config_dataset)
+        self.img_dir = self.hparams.img_dir
+        self.meta_dir = self.hparams.meta_dir
+        # checking whether the data directory is correctly set 
+        self.batch_size=batch_size
+
+        # setup dataset 
+        #self.setup()
         self.prepare_data_per_node=True
+        self.allow_zero_length_dataloader_with_multiple_devices = True
+
 
 
     def define_image_augmentation(self, mode='train'):
-        img_size = to_3tuple(self.hparams.model.image_encoder.img_size)
+        img_size = to_3tuple(self.hparams.img_size)
         if mode == 'train':
-            transform = Compose([NormalizeIntensity(),                              
-                                 AddChannel(),
-                                 Resize(img_size),
-                                 RandRotate90(prob=0.5),
-                                 RandAxisFlip(prob=0.5),
-                                 RandAffine(prob=0.5, padding_mode='zeros', translate_range=(int(img_size[0]*0.1),)*3, rotate_range=(np.pi/36,)*3, spatial_size=img_size,cache_grid=True),
-                                 ])
+            transform = Compose([AddChannel(),
+                               Resize(img_size),
+                               RandAxisFlip(prob=0.5),
+                               NormalizeIntensity()])
         elif mode == 'eval': 
-            transform = Compose([NormalizeIntensity(),  
-                                 AddChannel(),
-                                 Resize(img_size),
-                                 ])
+            transform = Compose([AddChannel(),
+                             Resize(img_size),
+                             NormalizeIntensity()])
         return transform
 
 
@@ -137,13 +134,14 @@ class  Text_Image_DataModule(pl.LightningDataModule):
             NotImplementedError("This code need only meta data file of '.csv' or '.xlsx' format.")
         
         ## randomly assign subjects into train/val/test split
+        #total_subj = 20
         total_subj = len(meta_data)
         shuffle_idx = np.arange(total_subj)
         np.random.shuffle(shuffle_idx)
 
-        assert self.hparams.dataset.train_size + self.hparams.dataset.val_size + self.hparams.dataset.test_size == 1
-        train_subj = int(self.hparams.dataset.train_size * total_subj)
-        val_subj = int(self.hparams.dataset.val_size * total_subj)
+        assert self.hparams.train_size + self.hparams.val_size + self.hparams.test_size == 1
+        train_subj = int(self.hparams.train_size * total_subj)
+        val_subj = int(self.hparams.val_size * total_subj)
         test_subj = total_subj - val_subj
 
         ## split image 
@@ -161,7 +159,7 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         val_label = meta_data['label'].values[shuffle_idx[train_subj:train_subj+val_subj]]
         test_label = meta_data['label'].values[shuffle_idx[train_subj+val_subj:]]
         
-        if self.hparams.dataset.add_context: 
+        if self.hparams.add_context: 
             ## split sex 
             train_sex = meta_data['sex'].values[shuffle_idx[:train_subj]]
             val_sex = meta_data['sex'].values[shuffle_idx[train_subj:train_subj+val_subj]]
@@ -192,9 +190,9 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
 
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.hparams.training_parameters.batch_size)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=self.hparams.training_parameters.batch_size)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.hparams.training_parameters.batch_size)
+        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size)
+        self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size)
+        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size)
 
 
     def train_dataloader(self):
