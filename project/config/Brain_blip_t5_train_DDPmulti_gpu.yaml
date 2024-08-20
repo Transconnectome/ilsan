@@ -37,5 +37,5 @@ pl_trainer:
     strategy: 'DDP'
     logger: "wandb" 
     log_every_n_steps: 1
-    ckpt_dir: "/pscratch/sd/h/heehaw/ilsan/project/output/checkpoint"
+    ckpt_dir: "/your/own/path/for/ckpt/file"
     resume_training: False
