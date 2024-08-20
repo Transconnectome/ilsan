@@ -92,6 +92,7 @@ class Brain_BLIP(Blip2Base):
         ## initialize projection layers
         self.vision_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
         self.text_proj = nn.Linear(self.Qformer.config.hidden_size, embed_dim)
+        self.itm_head = nn.Linear(self.Qformer.config.hidden_size, 2)
         self.lm_proj = nn.Linear(self.Qformer.config.hidden_size, self.lm_model.config.hidden_size)
 
         self.proj = nn.Linear(self.Qformer.config.hidden_size, self.lm_model.config.hidden_size)
@@ -140,7 +141,7 @@ class Brain_BLIP(Blip2Base):
                     input_ids[i][:this_input_ones],
                     output_ids[i][1:],
                     input_ids[i][this_input_ones:]
-                ])
+                ])  # [input, output, padding]
             )
             llm_tokens['attention_mask'].append(
                 torch.cat([
@@ -223,6 +224,54 @@ class Brain_BLIP(Blip2Base):
         """
         forward() method is the mixture of ref1 (https://github.com/salesforce/LAVIS/blob/main/lavis/models/blip2_models/blip2_qformer.py) and 
         ref2 (https://github.com/salesforce/LAVIS/blob/main/lavis/models/blip2_models/blip2_opt.py)
+        ##TODO 
+        원래 BLIP 페이퍼에서는 2-stage training이 진행된다. 1) image-caption 간의 연결 능력을 학습시키는 과정, 2) 이미지만 주었을 때 생성시키는 걸 학습하는 과정. 
+        이때 첫번째 과정의 핵심은 qformer가 a)이미지먹인 query와 텍스트를 매칭시키고(Image-text matching), b)이미지먹인 query로부터 텍스트 생성하기 (image-grounded text generation), c) 이미지먹인 query와 텍스트를 구분하기 (Image-text contrastive learning)이다. 
+        두번째 과정은 이를 바탕으로 하여, qformer가 이미지 먹인 query만 주더라도 이미지에 맞는 text를 생성할 수 있도록 학습시키는 과정인 것이다.  
+
+        Instruct BLIP은, 잘 학습된 BLIP을 활용하여 instruct라는 추가 정보를 주었을 때, 이 풍부한 정보를 활용하여 이미지에 맞는 텍스트를 더욱 잘 생성해내도록 만든 것이다. 
+
+        그렇다면, 여기에서 임상가들의 소견과 라벨을 어떻게 다룰 것인가? 둘 중에 어떤 것을 first stage에 쓰고 second stage에 쓸 것인가? 혹은 둘 다를 쓸 것인가? 
+        또한, BLIP에서의 second stage를 Instruct BLIP으로 대체할 것인가? 
+
+        >>> Image-text matching: image + (report + answer) 
+            Image-text contrastive learning: image + (report + answer) 
+            Image-grounded text generation (visual-aware instruction learning ): image + instruct (report+question)  -> answer generation 
+
+
+        
+            
+
+        - BLIP2와 Med BLIP의 차이
+        원래 BLIP2의 프레임 워크를 현재 시나리오대로 풀어보자면, stage 1에서는 image-text(=report)만으로 qformer를 학습시키고, stage 2에서 Transformer 구조에 맞게 (i.e., autoregressive or seq2seq) qformer로부터 얻어낸 visual prompt로부터 text를 생성할 수 있는 능력(image-grounded text generation)을 학습시킨다. 
+        즉, stage 1은 image와 text를 align 시키는 qformer를 학습시키고, stage 2에서는 qformer를 더욱 고도화하여 언어 모델이 image를 text prompt와 똑같이 visual prompt가 될 수 있도록 고도화시켜주는 것이다. 
+        (추가로, stage 1과 stage 2에 쓰이는 image-text pair는 동일하다. 즉, stage 1에서 image-text align을 이후에, stage 2에서 QnA를 하는 게 아니라 stage 2에서도 동일하게 image-text align을 하는 것이다. 다만, 좀 더 고도화시키는 과정인 것이다. Instruct BLIP에서는 BLIP2 stage 1에서 학습된 모델을 활용해서, visual prompt에 instruction을 추가하여 훨씬 더 다양한 task들을 text generation task로 해결할 수 있게 고도화하는 작업인 것이다. 즉, 훨씬 더 발전된 형태의 stage 2 학습이라고 보면 된다.)
+        하지만 Med BLIP에서는 한번의 learning stage만 거치게 되는데, 원래 BLIP2의 stage 1 학습에서 사용되는 세가지 loss인 1)image-text contrastive learning, 2)image-text matching, 3)image-grounded text generation 중에서 1)과 3)만을 활용한다. 
+        이때, 3)의 loss 구하는 과정에서 BLIP2와 Med BLIP의 가장 큰 차이가 두드러진다. 
+
+        BLIP2가 3)의 loss에서 input text를 causally genrate하는 것을 가르치는데 이때 image (정확히는 image 정보가 주입된 query embedding)을 key와 value로 주어서 seq2seq attention을 먹인다. 
+        이는 multi-modal causal attention이라고도 한다. 이는 image는 self attend를 하고, text는 image를 cross attend 할 수 있는 반면에 image는 text를 cross attend할 수 없고, text는 causally self attend를 할 수 있는 형태이다. 
+        이러한 attend 과정을 통한 학습이 진행되면서, text가 image 정보를 점점 활용할 수 있고 image는 text가 활용할 수 있는 형태로 점점 align이 되는 반면에, 그 반대로 text가 image에 align 되지는 않게 하면서 causally generation 할 수 있게 해주는 것이다. 
+        즉, image가 text의 잠재 공간으로 점점 align이 되어가는 과정인 것이다.  
+        이를 통해서 이미지의 정보를 활용해 text를 generation할 수 있는 능력을 학습시킨다. 
+        
+        Med BLIP의 경우, a)report+question으로 구성된 text, b)image (정확히는 image 정보가 주입된 query embedding), c)answer라는 세가지 input과 이들의 attention mask를 concatenate해서 언어 모델에 집어넣게 된다. 
+        이때, 모델은 a)와 c)를 생성하도록 학습된다. 
+        즉, a)와 b)와 c)가 합쳐진 하나의 embedding에서 self-attention이 일어나게 되며, a)와 c)의 label은 활용되고 b)의 label은 무시됨으로써 모델은 a)와 c)의 generation 생성 능력만을 평가하게 된다. 
+
+        정리하자면, BLIP2의 stage 1과 Med BLIP은 image-grounded text generation loss의 구현 방식에서 아주 큰 차이가 있는데, 
+        1) 언어 모델의 input에 image와 이를 설명하는 text만 넣었느냐 (=BLIP2; 우리 시나리오에서는 report text) 혹은 QnA의 text도 추가하였느냐 (=Med BLIP)
+        2) image (정확히는 image 정보가 주입된 query embedding)와 text 정보들을 cross attention으로 합쳤느냐 (=BLIP2) 혹은 concatenate 했느냐 (=Med BLIP)   
+
+        그런데, 자세히 살펴보면, Med BLIP의 image-grounded text generation 과정은 BLIP2의 stage 2에서 qformer를 autoregressive model (i.e., opt)에 적용하여 image-grounded text generation하는 것과 구조가 완전히 동일하다. 
+        BLIP2의 stage 2에서 qformer를 autoregressive model에 합친 모델의 경우, autoregressive model의 input으로 image(정확히는 image 정보가 주입된 query embedding)와 text를 concatenate해서 언어 모델에 집어넣어준다. 
+        그러면서 이렇게 합쳐진 하나의 embedding에서 self-attention이 일어나게 되며, image에 대한 label은 무시되고 text에 대한 label은 활용됨으로써 이미지 정보로부터 text를 생성할 수 있게 해준다. 
+        즉, Med BLIP은, BLIP2의 stage 1에서의 image-text contrastive learning loss와 stage 2에서의 autoregressive model의 image-grounded text generation loss가 합쳐지게 된 형태이다. 
+
+        최종적으로 요약하자면, 
+        1) Med BLIP은, BLIP2의 stage 1에서의 image-text contrastive learning loss와 stage 2에서의 autoregressive model의 image-grounded text generation loss가 합쳐지게 된 형태로 loss function을 구성한다. (즉, Med BLIP은 BLIP2의 stage 1에서의 image-grounded text generation의 loss 형태가 아니라, stage 2에서의 image-grounded text generation의 loss 형태를 사용하는 것이다)
+        2) Med BLIP은 BLIP2의 stage 2에서의 image-grounded text generation loss를 활용함에 있어서 원래의 text-image pair 데이터에서의 image로부터 text를 생성하게 하는 것이 아니라, 원래의 text-image pair 데이터에서 QnA text를 덧붙임으로써 text+image+question이 주어졌을 떄 answer를 생성할 수 있는 능력을 학습시킨다 (그리고 실제 학습할 때는 text, question, answer 모두를 잘 생성하도록 학습된다. text, image, question, answer가 주어지는 순서에 따른 ablation study를 한것이 Med BLIP 논문의 Table 4이다. )  
+
         """
         """
         batch = {'image': torch.tensor, 'text': list, 'qna': list}
@@ -262,10 +311,9 @@ class Brain_BLIP(Blip2Base):
         text_feat = F.normalize(self.text_proj(text_output.last_hidden_state[:, 0, :]), dim=-1)     # [batch_size, embed_dim]
 
 
-        ###============== Image-text Contrastive ===================###
+        ###============== Image-text Contrastive (Uni-modal Self-Attention) ===================###
         image_feats_all = concat_all_gather(image_feats)    # [batch_size*num_gpu, num_query_tokens, embed_dim]
         text_feat_all = concat_all_gather(text_feat)    # [batch_size*num_gpu, embed_dim]
-
 
         ### image and text  
         # image-text similarity: aggregate across all query tokens
@@ -290,7 +338,77 @@ class Brain_BLIP(Blip2Base):
             ) / 2
         
 
-        ###============== Visual-aware instructions ===================###
+        ###============== Image-text matching (Image and text multi-modal Self-Attention)===================###
+        text_input_ids_world = concat_all_gather(text_tokens.input_ids)
+        text_attention_mask_world = concat_all_gather(text_tokens.attention_mask)
+        image_embeds_world = all_gather_with_grad(image_embeds)
+        with torch.no_grad():
+            sim_t2i[:, rank * bs : rank * bs + bs].fill_diagonal_(-10000)
+            sim_i2t[:, rank * bs : rank * bs + bs].fill_diagonal_(-10000)   
+            weights_t2i = F.softmax(sim_t2i, dim=1)
+            weights_i2t = F.softmax(sim_i2t, dim=1)
+        
+        # select a negative image for each text
+        image_embeds_neg = []
+        for b in range(bs):
+            neg_idx = torch.multinomial(weights_t2i[b], 1).item()
+            image_embeds_neg.append(image_embeds_world[neg_idx])
+        image_embeds_neg = torch.stack(image_embeds_neg, dim=0)
+
+        # select a negative text for each image
+        text_ids_neg = []
+        text_atts_neg = []
+        for b in range(bs):
+            neg_idx = torch.multinomial(weights_i2t[b], 1).item()
+            text_ids_neg.append(text_input_ids_world[neg_idx])
+            text_atts_neg.append(text_attention_mask_world[neg_idx])
+        text_ids_neg = torch.stack(text_ids_neg, dim=0)
+        text_atts_neg = torch.stack(text_atts_neg, dim=0)
+        text_ids_all = torch.cat(
+            [text_tokens.input_ids, text_tokens.input_ids, text_ids_neg], dim=0
+        )  # pos, pos, neg
+        text_atts_all = torch.cat(
+            [text_tokens.attention_mask, text_tokens.attention_mask, text_atts_neg],
+            dim=0,
+        )
+
+        # get query token and attention mask
+        query_tokens_itm = self.query_tokens.expand(text_ids_all.shape[0], -1, -1)
+        query_atts_itm = torch.ones(query_tokens_itm.size()[:-1], dtype=torch.long).to(
+            image.device
+        )
+        attention_mask_all = torch.cat([query_atts_itm, text_atts_all], dim=1)
+
+        # get image embedding and attention mask
+        image_embeds_all = torch.cat(
+            [image_embeds, image_embeds_neg, image_embeds], dim=0
+        )  # pos, neg, pos
+        image_atts_all = torch.ones(image_embeds_all.size()[:-1], dtype=torch.long).to(
+            image.device
+        )
+
+        # forward Qformer
+        output_itm = self.Qformer.bert(
+            text_ids_all,
+            query_embeds=query_tokens_itm,
+            attention_mask=attention_mask_all,
+            encoder_hidden_states=image_embeds_all,
+            encoder_attention_mask=image_atts_all,
+            return_dict=True,
+        )
+
+        vl_embeddings = output_itm.last_hidden_state[:, : query_tokens_itm.size(1), :]
+        vl_output = self.itm_head(vl_embeddings)
+        logits = vl_output.mean(dim=1)
+
+        itm_labels = torch.cat(
+            [torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
+            dim=0,
+        ).to(image.device)
+        loss_itm = F.cross_entropy(logits, itm_labels)
+        
+
+        ###============== Image-grounded text generation (Visual-aware instruction learning; Multi-modal Causal Self-Attention) ===================###
         # query + instruction embedding
         self.tokenizer.truncation_side = 'left'
         text_Qformer = self.tokenizer(
@@ -329,7 +447,7 @@ class Brain_BLIP(Blip2Base):
              text_output_tokens,
              text_output_attention_masks
          )
-
+ 
 
         # do not apply loss to the padding
         targets = llm_tokens['input_ids'].masked_fill(
@@ -358,10 +476,14 @@ class Brain_BLIP(Blip2Base):
             )
         loss_inst = outputs.loss
 
-        loss=loss_itc+loss_inst
+
+        ###============== summarize losses ===================###
+        # sum all kinds of loss
+        loss=loss_itc+loss_itm+loss_inst
         
         loss_dict = {
             "loss_itc": loss_itc.mean().item(), 
+            "loss_itm": loss_itc.mean().item(), 
             "loss_inst": loss_inst.mean().item(),
             "loss_total": loss.mean().item()
             }
@@ -375,9 +497,9 @@ class Brain_BLIP(Blip2Base):
         self,
         batch,
         use_nucleus_sampling=False,
-        num_beams=1,
+        num_beams=5,
         max_length=30,
-        min_length=1,
+        min_length=5,
         top_p=0.9,
         repetition_penalty=1.0,
         length_penalty=1.0,
@@ -404,130 +526,133 @@ class Brain_BLIP(Blip2Base):
 
         # get text question tokens
         self.lm_tokenizer.padding_side = "left"
-        text_input_tokens, _, text_input_attention_masks = self.lm_input_preprocess(batch['quest'], text_type='question', device=image.device)
+        text_input_tokens, _, text_input_attention_masks = self.lm_input_preprocess(batch['inst'], text_type='instruction', device=image.device)
         inputs_embeds = self.lm_model.get_input_embeddings()(text_input_tokens)
         
         # concat query and text question embedding
         inputs_embeds = torch.cat([inputs_llm, inputs_embeds], dim=1)
         attention_mask = torch.cat([atts_llm, text_input_attention_masks], dim=1)   
-
+        
         # generation with k-beam search
-        generated_texts = self.batch_k_beam_search(model=self.lm_model, 
-                                                   tokenizer=self.lm_tokenizer,
-                                                   input_embeds=inputs_embeds,
-                                                   attention_mask=attention_mask,
-                                                   k=num_beams,
-                                                   max_length=max_length,
-                                                   min_length=min_length
-                                                   )
+        """
+        generated_sequences = self.generate_decode_with_k_beam_search(model=self.lm_model, 
+                                                                    tokenizer=self.lm_tokenizer,
+                                                                    input_embeds=inputs_embeds,
+                                                                    attention_mask=attention_mask,
+                                                                    k=num_beams,
+                                                                    max_length=max_length,
+                                                                    min_length=min_length
+                                                                    )
+        """
+        generated_sequences = self.generate_decode(model=self.lm_model, 
+                                                     tokenizer=self.lm_tokenizer,
+                                                     input_embeds=inputs_embeds,
+                                                     attention_mask=attention_mask,
+                                                     max_length=max_length,
+                                                     min_length=min_length
+                                                     )
+        
+        print(generated_sequences)
+        return generated_sequences
     
-        return generated_texts
     
+    @torch.no_grad()
+    def generate_decode(self, model, tokenizer, input_embeds, attention_mask, max_length=10, min_length=2):
+        eos_token_id = model.config.eos_token_id
+        device = input_embeds.device
+        seq_len = input_embeds.size(1)
+        embedding_dim = input_embeds.size(2)
+        batch_size = input_embeds.size(0)
+
+        generated_token_id = []
+        finished = torch.zeros(batch_size, dtype=torch.bool)
+        current_length = torch.zeros(batch_size, dtype=torch.long)
+        for _ in range(max_length):
+            outputs = model(inputs_embeds=input_embeds, attention_mask=attention_mask)
+            predictions = outputs.logits
+            predictions = torch.softmax(predictions, dim=-1)
+            predicted_ids = torch.argmax(predictions[:, -1, :], dim=-1).unsqueeze(-1)
+            generated_token_id.append(predicted_ids)
+
+            # 생성된 시퀀스의 길이 업데이트
+            current_length += 1
+            
+            # EOS 토큰 생성 확인 및 최소 길이 조건 검사
+            is_eos_generated = (predicted_ids.squeeze(-1) == eos_token_id)
+            can_finish = (current_length >= min_length)
+            finished |= is_eos_generated & can_finish
+            if finished.all():
+                break
+
+            next_embedding = self.lm_model.get_input_embeddings()(predicted_ids)
+            next_attention_mask = torch.ones((batch_size, 1), device=attention_mask.device)
+            input_embeds = torch.cat([input_embeds, next_embedding], dim=1)
+            attention_mask = torch.cat([attention_mask, next_attention_mask], dim=1)
+
+        generated_token_id = torch.cat(generated_token_id, dim=-1)
+        return tokenizer.batch_decode(generated_token_id, skip_special_tokens=True)
+        
+
 
 
 
     @torch.no_grad()
-    def batch_k_beam_search(self, model, tokenizer, input_embeds, attention_mask, k=5, max_length=50, min_length=20):
-        """
-        Apply k-beam search sequentially to each sample in the batch.
-        Args:
-        - model: Pretrained language model.
-        - tokenizer: Corresponding tokenizer.
-        - input_texts (list of str): List of input texts.
-        - k (int): Number of beams.
-        - max_length (int): Maximum sequence length.
-        - min_length (int): Minimum sequence length before allowing EOS token.
-        
-        Returns:
-        - List of generated texts for each input text.
-        """
+    def generate_decode_with_k_beam_search(self, model, tokenizer, input_embeds, attention_mask, k=5, max_length=10, min_length=2):
+        eos_token_id = model.config.eos_token_id
+        pad_token_id = tokenizer.pad_token_id
+        device = input_embeds.device
+        batch_size = input_embeds.size(0)
 
-        def _sequential_beam_search(model, tokenizer, input_embeds, attention_mask, k=5, max_length=50, min_length=20):
-            """
-            Perform k-beam search for a single input sequence represented by embeddings.
-            Args:
-            - model: Pretrained language model.
-            - input_embeds (torch.Tensor): Input embeddings tensor.
-            - attention_mask (torch.Tensor): Attention mask tensor.
-            - k (int): Number of beams.
-            - max_length (int): Maximum sequence length.
-            - min_length (int): Minimum sequence length before allowing EOS token.
-            
-            Returns:
-            - Tensor of token IDs for the best beam.
-            """
-            eos_token_id = model.config.eos_token_id
-            device = input_embeds.device
-            seq_len = input_embeds.size(1)
-            embedding_dim = input_embeds.size(2)
-            batch_size = input_embeds.size(0)
+        # 입력 임베딩과 어텐션 마스크 초기화
+        input_embeds = input_embeds.unsqueeze(1).expand(-1, k, -1, -1).contiguous().view(batch_size * k, -1, input_embeds.size(-1))
+        attention_mask = attention_mask.unsqueeze(1).expand(-1, k, -1).contiguous().view(batch_size * k, -1)
 
-            # Initialize beams
-            beams = input_embeds.repeat_interleave(k, dim=0)
-            beams_attention_mask = attention_mask.repeat_interleave(k, dim=0)
-            beam_scores = torch.zeros(batch_size * k, device=device)
+        beam_scores = torch.zeros(batch_size * k, device=device)
+        beam_tokens = torch.full((batch_size * k, max_length), pad_token_id, dtype=torch.long, device=device)
+        beam_lengths = torch.zeros(batch_size * k, dtype=torch.long, device=device)
+        beam_eos_mask = torch.zeros(batch_size * k, dtype=torch.bool, device=device)
 
-            completed_beams = [[] for _ in range(batch_size)]
-            completed_beam_scores = [torch.full((k,), -float("Inf"), device=device) for _ in range(batch_size)]
+        for step in range(max_length):
+            if step > 0:
+                input_embeds = torch.cat([input_embeds, model.get_input_embeddings()(beam_tokens[:, step-1:step])], dim=1)
+                attention_mask = torch.cat([attention_mask, torch.ones((batch_size * k, 1), device=device)], dim=1)
 
-            for step in range(max_length - seq_len):
-                outputs = model(inputs_embeds=beams, attention_mask=beams_attention_mask)
-                logits = outputs.logits[:, -1, :]
-                
-                probs = torch.softmax(logits, dim=-1)
-                
-                # Prevent EOS selection if minimum length not achieved
-                if step < min_length:
-                    probs[:, eos_token_id] = 0
-                    
-                top_probs, top_indices = torch.topk(probs, k, dim=-1)
-                
-                # For the first step, expand each beam k times
-                if step == 0:
-                    beams = beams.unsqueeze(1).expand(-1, k, -1, -1).clone().reshape(batch_size * k * k, seq_len, embedding_dim)
-                    beam_scores = beam_scores.unsqueeze(-1).expand(-1, k).clone().reshape(batch_size * k * k)
-                    beams_attention_mask = beams_attention_mask.unsqueeze(1).expand(-1, k, -1).clone().reshape(batch_size * k * k, seq_len)
-                        
-                # Update beams, scores, and masks
-                next_tokens = model.transformer.wte(top_indices)  # Convert token indices to embeddings
-                beams = torch.cat([beams, next_tokens], dim=1)
-                beam_scores += top_probs.log().view(-1)
-                beams_attention_mask = torch.cat([beams_attention_mask, torch.ones((batch_size * k, 1), device=device)], dim=1)
-                
-                # Check and store completed beams
-                for idx, beam in enumerate(beams):
-                    if beam_scores[idx] != -float("Inf") and (top_indices.view(-1)[idx] == eos_token_id or step == max_length - seq_len - 1):
-                        batch_idx = idx // k
-                        completed_beams[batch_idx].append(beam)
-                        completed_beam_scores[batch_idx][idx % k] = beam_scores[idx]
-                        beam_scores[idx] = -float("Inf")
-            # Handling cases where no beam is completed
-            for i in range(batch_size):
-                if not completed_beams[i]:  # If no completed beam, select the best available beam
-                    beam_idx = beam_scores[i * k:(i + 1) * k].argmax()
-                    completed_beams[i].append(beams[i * k + beam_idx])
-                    completed_beam_scores[i][beam_idx] = beam_scores[i * k + beam_idx]
+            outputs = model(inputs_embeds=input_embeds, attention_mask=attention_mask)
+            logits = outputs.logits[:, -1, :]
+            logits = torch.softmax(logits, dim=-1)
+            topk_scores, topk_tokens = torch.topk(logits, k, dim=-1)
+
+            # 빔 점수 및 토큰 업데이트
+            if step == 0:
+                beam_scores = topk_scores.view(batch_size * k, k).contiguous().view(-1)
+            else:
+                beam_scores += topk_scores.view(batch_size * k, k).max(dim=1)[0]  # 최대 점수만 더함
+
+            # 각 빔의 현재 길이 업데이트
+            beam_lengths += 1
+            # EOS 토큰이 나타났는지 체크하고, 최소 길이에 도달하지 않았으면 무시
+            is_eos = (topk_tokens == eos_token_id)
+            print(is_eos)
+            beam_eos_mask |= is_eos.view(-1)
+            too_short = (beam_lengths < min_length)
+            beam_tokens[:, step] = torch.where(too_short, topk_tokens.view(-1), eos_token_id if is_eos else topk_tokens.view(-1))
+
+        # 최종 시퀀스 선택 및 디코딩
+        best_indices = beam_scores.view(batch_size, k).argmax(dim=1)
+        best_sequences = beam_tokens.view(batch_size, k, -1)[torch.arange(batch_size), best_indices]
+        return [tokenizer.decode(seq, skip_special_tokens=True) for seq in best_sequences]
 
 
-            # Select the best beams
-            best_beams = [beams[i * k + completed_beam_scores[i].argmax()].unsqueeze(0) for i in range(batch_size)]
-            best_beams_attention_mask = [beams_attention_mask[i * k + completed_beam_scores[i].argmax()].unsqueeze(0) for i in range(batch_size)]
-            best_beams = torch.cat(best_beams, dim=0)
-            best_beams_attention_mask = torch.cat(best_beams_attention_mask, dim=0)
-            outputs = model(inputs_embeds=best_beams, attention_mask=best_beams_attention_mask)
-            generated_token_id = outputs.logits[:, -1, :].argmax(axis=-1)
-            return tokenizer.batch_decode(generated_token_id, skip_special_tokens=True)
 
 
-        #generated_texts = [_sequential_beam_search(model, tokenizer, embed, mask, k, max_length, min_length) for embed, mask in zip(input_embeds, attention_mask)]
-        generated_texts = _sequential_beam_search(model, tokenizer, input_embeds, attention_mask, k, max_length, min_length)
-        return generated_texts
+
+
 
 
 
 
 class Brain_BLIP_pl(pl.LightningModule): 
-    def __init__(self, config: dict, lm_model, lm_tokenizer):
+    def __init__(self, config: dict, img_size=None, lm_model=None, lm_tokenizer=None):
         """
         config: dictionary load from .yaml file
         """ 
@@ -537,7 +662,7 @@ class Brain_BLIP_pl(pl.LightningModule):
 
         # setting model
         self.model = Brain_BLIP(vit_model=self.hparams.model.image_encoder.vit_model,
-                                img_size=self.hparams.model.image_encoder.img_size,
+                                img_size=img_size,
                                 patch_size=self.hparams.model.image_encoder.patch_size,
                                 drop_path_rate=self.hparams.model.image_encoder.drop_path_rate,
                                 use_grad_checkpoint=self.hparams.model.image_encoder.use_grad_checkpoint,
@@ -561,10 +686,15 @@ class Brain_BLIP_pl(pl.LightningModule):
     def training_step(self, batch, batch_idx): 
         loss, loss_dict = self.model(batch, int(self.global_rank))
         self.log_dict({
-            "train_loss_itc": loss_dict['loss_itc'],
-            "train_loss_inst": loss_dict['loss_inst'],
-            "train_loss_total": loss_dict['loss_total']
+            "train/loss_itc": loss_dict['loss_itc'],
+            "train/loss_itm": loss_dict['loss_itm'],
+            "train/loss_inst": loss_dict['loss_inst'],
+            "train/loss_total": loss_dict['loss_total']
         })
+        if batch_idx == 0: 
+            sample_result_dict = {'input': batch,
+                                  'answer': self.model.generate(batch, device=batch['image'].device)
+                                  }
         torch.cuda.empty_cache()
         return loss
      
@@ -572,26 +702,28 @@ class Brain_BLIP_pl(pl.LightningModule):
     def validation_step(self,batch, batch_idx): 
         _, loss_dict = self.model(batch, int(self.global_rank))
         self.log_dict({
-            "valid_loss_itc": loss_dict['loss_itc'],
-            "valid_loss_inst": loss_dict['loss_inst'],
-            "valid_loss_total": loss_dict['loss_total']
+            "valid/loss_itc": loss_dict['loss_itc'],
+            "valid/loss_itm": loss_dict['loss_itm'],
+            "valid/loss_inst": loss_dict['loss_inst'],
+            "valid/loss_total": loss_dict['loss_total']
         })
-        """
+        
         if batch_idx == 0: 
             sample_result_dict = {'input': batch,
-                                  'answer': self.model.generate(batch, device=batch['image'].device)
+            #                      'answer': self.model.generate(batch, device=batch['image'].device)
                                   }
             self.validation_step_outputs = sample_result_dict
         self.validation_step_outputs = None
-        """
+        
 
 
     def test_step(self,batch, batch_idx): 
         _, loss_dict = self.model(batch, int(self.global_rank))
         self.log_dict({
-            "test_loss_itc": loss_dict['loss_itc'],
-            "test_loss_inst": loss_dict['loss_inst'],
-            "test_loss_total": loss_dict['loss_total']
+            "test/loss_itc": loss_dict['loss_itc'],
+            "test/loss_itm": loss_dict['loss_itm'],
+            "test/loss_inst": loss_dict['loss_inst'],
+            "vest/loss_total": loss_dict['loss_total']
         })
 
     """
