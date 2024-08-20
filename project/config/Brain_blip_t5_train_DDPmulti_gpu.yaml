@@ -1,9 +1,9 @@
 wandb:
-    API_KEY: "d3aa43e2c12e48489b08c4a1ee19de1ff8f88e0f"
+    API_KEY: 
 
 dataset:
-    img_dir: "/pscratch/sd/h/heehaw/ilsan/sample_img"
-    meta_dir: "/pscratch/sd/h/heehaw/ilsan/meta_data.xlsx"
+    img_dir: 
+    meta_dir: 
     add_context: True
     train_size: 0.8
     val_size: 0.1
