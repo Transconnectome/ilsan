@@ -213,6 +213,8 @@ class Brain_BLIP_pl(pl.LightningModule):
         self.log_dict({
             "train/loss": loss.item(),
         }, sync_dist=True)
+        if batch_idx % 20 == 0: 
+            print(f"Ground Truth: {batch['text_output'][:4]}\nPredicted Answer: pred[:4]")
         
         try: 
             acc = self.summarize_model_performance(batch['text_output'], pred)
