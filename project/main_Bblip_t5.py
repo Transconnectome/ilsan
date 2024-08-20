@@ -46,7 +46,7 @@ def __main__():
 
     ### setting pytorch lightning 
     pl.seed_everything(config.training_parameters.seed)
-    DataModule = Text_Image_DataModule(config_dataset=config.dataset,batch_size=config.training_parameters.batch_size)
+    DataModule = Text_Image_DataModule(config_dataset=config.dataset, batch_size=config.training_parameters.batch_size)
     
 
     #lm_model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen-7B-Chat', device_map="sequential", fp16=True, trust_remote_code=True).eval().to('cpu')
@@ -63,7 +63,7 @@ def __main__():
     ### checkpoint 
     checkpoint_callback = ModelCheckpoint(
         save_top_k=2,
-        monitor="valid_loss_total",
+        monitor="valid/loss",
         mode="min",
         dirpath=config.pl_trainer.ckpt_dir,
         filename="{epoch:02d}-{valid_loss_total:.2f}",

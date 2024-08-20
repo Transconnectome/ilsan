@@ -73,7 +73,7 @@ def __main__():
     ### checkpoint 
     checkpoint_callback = ModelCheckpoint(
         save_top_k=2,
-        monitor="valid_loss_total",
+        monitor="valid/loss",
         mode="min",
         dirpath=config.pl_trainer.ckpt_dir,
         filename="{epoch:02d}-{valid_loss_total:.2f}",
