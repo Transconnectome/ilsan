@@ -6,9 +6,9 @@ from omegaconf import OmegaConf
 import torch
 import pytorch_lightning as pl 
 from pytorch_lightning.loggers import  WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 from dataset.dataset import Text_Image_DataModule
-from model.eva_vit import Brain_BLIP_image
-from pytorch_lightning.plugins.environments import ClusterEnvironment
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from torch.distributed.fsdp.wrap import (
@@ -44,7 +44,7 @@ def __main__():
 
     ### setting pytorch lightning 
     pl.seed_everything(config.training_parameters.seed)
-    DataModule = Text_Image_DataModule(config=config, img_dir=config.dataset.img_dir, meta_dir=config.dataset.meta_dir)
+    DataModule = Text_Image_DataModule(config_dataset=config.dataset,batch_size=config.training_parameters.batch_size)
     
     ### initialize model 
     """
@@ -58,18 +58,29 @@ def __main__():
     if config.model.language_encoder.use_flash_attn is False: 
         for i in range(len(lm_model.transformer.h)):
             lm_model.transformer.h[i].attn.use_flash_attn=False
+
     #lm_model = AutoModelForCausalLM.from_pretrained('Qwen/Qwen-7B-Chat', device_map="sequential", fp16=True, trust_remote_code=True).eval().to('cpu')
     #lm_tokenizer = AutoTokenizer.from_pretrained("facebook/opt-350m", device_map='sequential')
     #lm_model = OPTModel.from_pretrained("facebook/opt-350m", torch_dtype=torch.float16, device_map='sequential').eval().to('cpu')
     torch.cuda.empty_cache()
-    #model = Brain_BLIP_module(config=config)
     model = Brain_BLIP_pl(config=config, lm_tokenizer=lm_tokenizer, lm_model=lm_model)
-    #model = Brain_BLIP_image(config=config)
-    model.cuda()
-    
+    if config.pl_trainer.resume_training:
+        model = Brain_BLIP_pl.load_from_checkpoint(checkpoint_path=config.pl_trainer.ckpt_dir, img_size=config.dataset.img_size, lm_tokenizer=lm_tokenizer, lm_model=lm_model)
+    else:
+        model = Brain_BLIP_pl(config=config, img_size=config.dataset.img_size, lm_tokenizer=lm_tokenizer, lm_model=lm_model) 
+    #model.cuda()
+
+    ### checkpoint 
+    checkpoint_callback = ModelCheckpoint(
+        save_top_k=2,
+        monitor="valid_loss_total",
+        mode="min",
+        dirpath=config.pl_trainer.ckpt_dir,
+        filename="{epoch:02d}-{valid_loss_total:.2f}",
+    )
+
     ### initialize trainer 
     trainer = pl.Trainer(
-        #plugins=[ClusterEnvironment()],
         max_epochs=config.pl_trainer.max_epochs,
         devices=config.pl_trainer.devices,
         accelerator=config.pl_trainer.accelerator,
@@ -78,6 +89,7 @@ def __main__():
         precision=config.pl_trainer.precision,
         logger=logger,
         log_every_n_steps=config.pl_trainer.log_every_n_steps, 
+        callbacks=[checkpoint_callback]
     )
 
     # training 
