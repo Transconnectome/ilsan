@@ -1,0 +1,25 @@
+wandb:
+    API_KEY: "d3aa43e2c12e48489b08c4a1ee19de1ff8f88e0f"
+
+dataset:
+    img_dir: ""
+    meta_dir: /storage/lab01/ilsan_brain_infarction/metadata/20240702_전체데이터(가공).xlsx
+    add_context: True
+    train_size: 0.8
+    val_size: 0.1
+    test_size: 0.1
+    img_size: 128
+
+model: 
+    hf_name: "Salesforce/blip2-flan-t5-xl"
+
+
+training_parameters:
+    seed: 1234
+
+
+trainer_args: 
+    max_epochs: 10
+    ckpt_dir: "/storage/lab01/ilsan_brain_infarction/checkpoints"
+    ckpt_file: ""
+    resume_training: False
