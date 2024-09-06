@@ -109,5 +109,7 @@ def __main__():
         eval_dataset = DataModule.val_dataset,
     )
 
+    trainer.train()
+
 if __name__ == '__main__': 
     __main__()
