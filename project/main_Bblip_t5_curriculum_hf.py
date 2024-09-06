@@ -6,7 +6,7 @@ from omegaconf import OmegaConf
 
 import torch
 
-from dataset.dataset_curriculum import Text_Image_DataModule
+from dataset.dataset_curriculum_hf import Text_Image_DataModule
 from transformers import AutoTokenizer, Blip2ForConditionalGeneration, Trainer, TrainingArguments
 from accelerate.utils import DistributedType
 
