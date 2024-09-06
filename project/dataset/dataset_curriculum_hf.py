@@ -185,12 +185,11 @@ class Text_Image_Dataset(Dataset, Randomizable):
 
 
 class  Text_Image_DataModule(pl.LightningDataModule):
-    def __init__(self, config_dataset:dict = None, batch_size=1, bootstrapping_data=True):
+    def __init__(self, config_dataset:dict = None, tokenizer=tokenizer, bootstrapping_data=False):
         self.save_hyperparameters(config_dataset)
         self.img_dir = self.hparams.img_dir
         self.meta_dir = self.hparams.meta_dir
         # checking whether the data directory is correctly set 
-        self.batch_size=batch_size
         self.bootstrapping_data = bootstrapping_data
 
         # setup dataset 
@@ -409,25 +408,5 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
 
-        self.train_loader = DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
-        self.val_loader = DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
-        self.test_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=8, pin_memory=True, drop_last=True)
-
-
-    def train_dataloader(self):
-        return self.train_loader
-
-
-    def val_dataloader(self):
-        return self.val_loader
-
-
-    def test_dataloader(self):
-        return self.test_loader
-
-
-    def predict_dataloader(self):
-        NotImplementedError()
-        pass 
 
 
