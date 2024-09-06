@@ -96,7 +96,7 @@ def __main__():
         bf16=True, 
         bf16_full_eval=True,
         gradient_checkpointing=True,
-        diable_tqdm=False, 
+        disable_tqdm=False, 
     )
     
     ### using optimizer defined in deepspeed configuration file
