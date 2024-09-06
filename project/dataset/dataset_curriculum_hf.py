@@ -361,14 +361,14 @@ class  Text_Image_DataModule(pl.LightningDataModule):
             answers["answer3"].append(answer3)
 
         # filter and bootstrapping with subject's injury time
-        filter_idx_answer2 = list(filter(lambda i: "nan" not in  answers["answer"]["answer2"][i], range(len(answers['answer']["answer2"]))))
+        filter_idx_answer2 = list(filter(lambda i: "nan" not in  answers["answer2"][i], range(len(answers["answer2"]))))
         images_new_answer2 = [images[i] for i in filter_idx_answer2]
         text_new_answer2 = [text[i] for i in filter_idx_answer2]
         label_new_answer2 = [label[i] for i in filter_idx_answer2]
 
 
         # filter and bootstrapping with subject's characteristics 
-        filter_idx_answer3 = list(filter(lambda i: "nan" not in  answers["answer"]["answer3"][i], range(len(answers['answer']["answer3"]))))
+        filter_idx_answer3 = list(filter(lambda i: "nan" not in  answers["answer3"][i], range(len(answers["answer3"]))))
         images_new_answer3 = [images[i] for i in filter_idx_answer3]
         text_new_answer3 = [text[i] for i in filter_idx_answer3]
         label_new_answer3 = [label[i] for i in filter_idx_answer3]
