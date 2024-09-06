@@ -248,25 +248,25 @@ class  Text_Image_DataModule(pl.LightningDataModule):
         test_images = [os.path.join(img_dir, img) for img in meta_data['BET_output_path'].values[shuffle_idx[train_subj+val_subj:]]]
 
         ## split text 
-        train_text = meta_data['reports'].values[shuffle_idx[:train_subj]]
-        val_text = meta_data['reports'].values[shuffle_idx[train_subj:train_subj+val_subj]]
-        test_text = meta_data['reports'].values[shuffle_idx[train_subj+val_subj:]]
+        train_text = meta_data['reports'].values[shuffle_idx[:train_subj]].tolist()
+        val_text = meta_data['reports'].values[shuffle_idx[train_subj:train_subj+val_subj]].tolist()
+        test_text = meta_data['reports'].values[shuffle_idx[train_subj+val_subj:]].tolist()
 
         ## split label 
-        train_label = meta_data['label'].values[shuffle_idx[:train_subj]]
-        val_label = meta_data['label'].values[shuffle_idx[train_subj:train_subj+val_subj]]
-        test_label = meta_data['label'].values[shuffle_idx[train_subj+val_subj:]]
+        train_label = meta_data['label'].values[shuffle_idx[:train_subj]].tolist()
+        val_label = meta_data['label'].values[shuffle_idx[train_subj:train_subj+val_subj]].tolist()
+        test_label = meta_data['label'].values[shuffle_idx[train_subj+val_subj:]].tolist()
         
         if self.hparams.add_context: 
             ## split sex 
-            train_sex = meta_data['sex'].values[shuffle_idx[:train_subj]]
-            val_sex = meta_data['sex'].values[shuffle_idx[train_subj:train_subj+val_subj]]
-            test_sex = meta_data['sex'].values[shuffle_idx[train_subj+val_subj:]]
+            train_sex = meta_data['sex'].values[shuffle_idx[:train_subj]].tolist()
+            val_sex = meta_data['sex'].values[shuffle_idx[train_subj:train_subj+val_subj]].tolist()
+            test_sex = meta_data['sex'].values[shuffle_idx[train_subj+val_subj:]].tolist()
 
             ## split age 
-            train_age = meta_data['age'].values[shuffle_idx[:train_subj]]
-            val_age = meta_data['age'].values[shuffle_idx[train_subj:train_subj+val_subj]]
-            test_age = meta_data['age'].values[shuffle_idx[train_subj+val_subj:]]
+            train_age = meta_data['age'].values[shuffle_idx[:train_subj]].tolist()
+            val_age = meta_data['age'].values[shuffle_idx[train_subj:train_subj+val_subj]].tolist()
+            test_age = meta_data['age'].values[shuffle_idx[train_subj+val_subj:]].tolist()
 
             if self.bootstrapping_data: 
                 train_images, train_text, train_label, train_sex, train_age = self.bootstrapping_data_with_label(train_images, train_text, train_label, sex=train_sex, age=train_age)
