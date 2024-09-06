@@ -82,7 +82,7 @@ def __main__():
         report_to = 'wandb',
         deepspeed = './config/hf_deepspeed_zero3_offload.json',
         run_name = f'{hash_key}',
-        num_train_epochs=config.pl_trainer.max_epochs,              # total number of training epochs
+        num_train_epochs=config.trainer_args.max_epochs,              # total number of training epochs
         #per_device_train_batch_size=config.training_parameters.batch_size,  # batch size per device during training
         #per_device_eval_batch_size=config.training_parameters.batch_size,   # batch size for evaluation
         do_train = True, 
