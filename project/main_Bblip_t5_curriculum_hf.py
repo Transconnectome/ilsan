@@ -93,8 +93,8 @@ def __main__():
         logging_dir='./hf_logs',            # directory for storing logs
         logging_steps=10,
         # arguments for reducing memory (+ deepspeed zero3 offload)
-        bf16=True, 
-        bf16_full_eval=True,
+        fp16=True, 
+        fp16_full_eval=True,
         gradient_checkpointing=True,
         disable_tqdm=False, 
     )
