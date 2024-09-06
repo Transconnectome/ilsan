@@ -95,7 +95,7 @@ def __main__():
         # arguments for reducing memory (+ deepspeed zero3 offload)
         bf16=True, 
         bf16_full_eval=True,
-        gradient_checkpointint=True,
+        gradient_checkpointing=True,
         diable_tqdm=False, 
     )
     
