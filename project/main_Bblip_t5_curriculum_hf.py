@@ -1,13 +1,13 @@
 import datetime
 import hashlib
 import json 
-from project.model.Bblip_t5_curriculum_hf import PatchEmbed, Blip2ForConditionalGeneration
+from project.model.Bblip_t5_curriculum_hf import PatchEmbed
 from omegaconf import OmegaConf
 
 import torch
 
 from dataset.dataset_curriculum import Text_Image_DataModule
-from transformers import AutoTokenizer, Trainer, TrainingArguments
+from transformers import AutoTokenizer, Blip2ForConditionalGeneration, Trainer, TrainingArguments
 from accelerate.utils import DistributedType
 
 
