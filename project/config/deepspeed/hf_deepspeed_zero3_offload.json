@@ -32,7 +32,7 @@
 
     "zero_force_ds_cpu_optimizer": false,
 
-    "bf16": {
+    "fp16": {
         "enabled": true
     },
 
