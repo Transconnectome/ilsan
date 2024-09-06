@@ -1,7 +1,7 @@
 import datetime
 import hashlib
 import json 
-from project.model.Bblip_t5_curriculum_hf import PatchEmbed
+from model.Bblip_t5_curriculum_hf import PatchEmbed
 from omegaconf import OmegaConf
 
 import torch
