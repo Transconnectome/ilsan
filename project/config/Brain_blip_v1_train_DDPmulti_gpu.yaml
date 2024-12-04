@@ -44,3 +44,4 @@ pl_trainer:
     strategy: 'DDP'
     logger: "wandb" 
     log_every_n_steps: 1
+    ckpt_dir: "/your/own/path/for/ckpt/file"
